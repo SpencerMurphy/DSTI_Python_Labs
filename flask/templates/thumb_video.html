@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Fruit Identification{% endblock %}
+{% block content %}
+<h1>Front Video</h1>
+<p></p>
+<img src="{{ url_for('thumb_video_feed') }}">
+<p>Thumb Up : OK</p>
+<p>Thumb Down : Not OK</p>
+<form action="#" method = "post">
+	<p><input type="submit" name="submit_button" value="Press the button to get the result" /></p>
+</form>
+{% endblock %}
