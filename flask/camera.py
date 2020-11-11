@@ -6,9 +6,28 @@ from keras.preprocessing import image
 from keras.applications.vgg16 import preprocess_input as preprocess_input_vgg
 from keras.models import load_model
 
-# load the weights of the thumb detection model
-model_thumb = load_model("model/weights_thumb_v1.h5")
-model_thumb.optimizer.lr
+from predict import YoloPredictionModel, generate_blob
+from predict_classif import ClassifPredictionModel
+
+
+from flask_socketio import SocketIO, emit
+from threading import Thread, Event
+
+
+PATH_MODEL_THUMB = "model/weights_thumb_v10112020.h5"
+PATH_CLASSES_THUMB = "model/thumb.classes"
+
+
+classif_thumb = ClassifPredictionModel(PATH_MODEL_THUMB, PATH_CLASSES_THUMB,(190,50,440,300))
+
+
+PATH_CONFIG = "yolo_config/yolov4-custom-02.cfg"
+PATH_WEIGHTS = "yolo_config/weights/yolov4-custom-02_final.weights"
+PATH_CLASSES = "yolo_config/obj.names"
+
+yolo = YoloPredictionModel(PATH_CONFIG,
+                               PATH_WEIGHTS,
+                               PATH_CLASSES).set_backend_and_device()
 
 # initialiaze a global variable for thread
 thread = None
@@ -18,7 +37,7 @@ class Camera:
 	"""
     This Class define the bahavior of a camera connected to the server
 	"""
-	def __init__(self,socketio, video_source=0,nb_predicted_images = 60):
+	def __init__(self,socketio = None, video_source=0,nb_predicted_images = 60):
 		"""
 		This function initialize the class Camera
 		Args:
@@ -131,41 +150,23 @@ class Camera:
 		- None
 		"""
 		# use the model_variable as global
-		global model_thumb
 		global thread
 
 		# if an image has already been set into frames variable
 		if len(self.frames)>0:
-			img2 = self.frames
+			frame = self.frames
+			# get the prediction of the actual frame
+			pred_class_idx, pred_proba_value, text  = classif_thumb.predict_and_identify(frame, 0.5)
+
 			# flip the image to better feeling on the screen
-			img2 = cv2.flip(img2, 1)
-			# add a red rectangle on the image (where the thumb will be detected)
-			cv2.rectangle(img2, (300, 50), (550, 300), (0, 0, 255), 0)
-			# for the prediction we just keep this rectangle
-			img_array = cv2.resize(img2[50:300,300:550], (224, 224))
-			# pre traitment of the image before prediction
-			img_expanded = np.expand_dims(img_array, axis=0)
-			preprocessed_image = preprocess_input_vgg(img_expanded)
-			# the prediction is done here and put into pred variable
-			pred = model_thumb.predict(preprocessed_image)
+			frame = cv2.flip(frame, 1)
 
-			classes = ['UP','DOWN','UNKNOWN']
-			# look at the higher probability among up/down/unknown
-			# if prediction under 50% probability, return -1/No Prediction
-			pred_class_idx = np.zeros(1)
-			if np.max(pred,axis=1)[0] > 0.5:
-				pred_class_idx = np.argmax(pred, axis=1)
-				text = "{}".format(classes[pred_class_idx[0]])
-
-			else:
-				pred_class_idx[0] = -1
-				text = "No Prediction"
 			# store the prediction
-			self._predictions.append(pred_class_idx[0])
+			self._predictions.append(pred_class_idx)
 			# add the prediction using a text, on the image
-			cv2.putText(img2, text, (35, 50), cv2.FONT_HERSHEY_SIMPLEX,1.25, (0, 0, 255), 5)
+			cv2.putText(frame, text, (35, 50), cv2.FONT_HERSHEY_SIMPLEX,1.25, (0, 0, 255), 5)
 			#encode the image in a .png file
-			img = cv2.imencode('.png', img2)[1].tobytes()
+			img = cv2.imencode('.png', frame)[1].tobytes()
 
 			# if the number of images to analyse is reached the answer is send to the front end
 			if len(self._predictions) > self.nb_predicted_images:
@@ -213,56 +214,136 @@ class Camera:
 		# if an image has already been set into frames variable
 		if len(self.frames)>0:
 			img2 = self.frames
-			# flip the image to better feeling on the screen
 			img2 = cv2.flip(img2, 1)
-			# add a red rectangle on the image (where the thumb will be detected)
-			cv2.rectangle(img2, (300, 50), (550, 300), (0, 0, 255), 0)
-			# for the prediction we just keep this rectangle
-			img_array = cv2.resize(img2[50:300,300:550], (224, 224))
-			# pre traitment of the image before prediction
-			img_expanded = np.expand_dims(img_array, axis=0)
-			preprocessed_image = preprocess_input_vgg(img_expanded)
-			# the prediction is done here and put into pred variable
-			pred = model_thumb.predict(preprocessed_image)
-			#print(round(pred[0][0],2),round(pred[0][1],2),round(pred[0][2],2))
+			
+			img_array = cv2.resize(img2, (256, 256))
 
-			classes = ['UP','DOWN','UNKNOWN']
-			# look at the higher probability among up/down/unknown
-			# if prediction under 50% probability, return -1/No Prediction
-			pred_class_idx = np.zeros(1)
-			if np.max(pred,axis=1)[0] > 0.5:
-				pred_class_idx = np.argmax(pred, axis=1)
-				text = "{}".format(classes[pred_class_idx[0]])
+			# tranform frames into blobs
+			blob_input = generate_blob(img2)
+			# blobs as yolo inputs
+			yolo.ingest_input(blob_input)
+			# Get output obects
+			layers = yolo.get_output_layers_names()
+			output = yolo._forward()
+			# Predictions
+			classe,index,proba = yolo.predict_and_identify(img2,output,0.5)
 
-			else:
-				pred_class_idx[0] = -1
-				text = "No Prediction"
-			# store the prediction
-			self._predictions.append(pred_class_idx[0])
-			# add the prediction using a text, on the image
-			cv2.putText(img2, text, (35, 50), cv2.FONT_HERSHEY_SIMPLEX,1.25, (0, 0, 255), 5)
+			# get the index of the detected fruit :
+			# -1 : no detection
+			# 0:3 : index of fruit
+			# 4 : several fruits detected
+			result = result_fruit(classe,index,proba)
+
+			# store the result on a list
+			self._predictions.append(result)
+		
 			#encode the image in a .png file
 			img = cv2.imencode('.png', img2)[1].tobytes()
 
 			# if the number of images to analyse is reached the answer is send to the front end
+			#if False:
 			if len(self._predictions) > self.nb_predicted_images:
 				# stop camera
 				self.stop()
 				thread = None
 				self.frames = []
-				up = np.sum(np.array(self._predictions) == 0)
-				down = np.sum(np.array(self._predictions) == 1)
-				if up >= down and up > (self.nb_predicted_images / 10):
-					print("up")
-					self.socketio.emit('newnumber', {'number': 10}, namespace='/start')
-				elif up < down and down > self.nb_predicted_images / 10:
-					print("down")
-					self.socketio.emit('newnumber', {'number': 11}, namespace='/start')
-				else:
-					print("unknown")
-					self.socketio.emit('newnumber', {'number': 12}, namespace='/start')
+				# analyse the list of detection realised on all the images and return one detection answer
+				detection = detection_fruit(classe,self._predictions)
+
+				# send the detection to the front end
+				# add 10 to the detection to create an unique code that can be used by the front end
+				self.socketio.emit('newnumber', {'number': 10+detection}, namespace='/start')
+			
 		# if not image yet from the camera then just send a default image
 		else:
 			with open("images/0.jpg","rb") as f:
 				img = f.read()			
 		return img
+
+
+	
+def result_fruit(classe,index,proba):
+	"""
+	This function analyse the prediction and return a consolidation of the predictions done
+	Args:
+	-----
+	- classe : list of classes
+	- index : list with the index of fruit detected
+	- proba : probability of the detection (not used)
+	Returns:
+	--------
+	- fruit dtected :
+		-1 : no detection
+		0:3 : index of the fruit
+		4 : several fruits detected
+	"""
+	list_indexes = classe[::2]
+	#print(list_indexes)
+	nb_fruit = len(list_indexes)-1 # remove the blank detection
+	list_nb_indexes = [index.count(x*2)+index.count(x*2+1) for x in range(nb_fruit+1)]
+	#print(list_nb_indexes)
+	list_nb_fruit = list_nb_indexes[0:nb_fruit]
+	nb_zeros = list_nb_fruit[0:nb_fruit].count(0)
+	# if only one fruit detected (n-1 zeros) then return the index of the fruit detected
+	if nb_zeros == (nb_fruit-1):
+		fruit = list_nb_fruit.index(max(list_nb_fruit))
+	# number of  equal number of fruit => no detection
+	elif nb_zeros == nb_fruit:
+		fruit = -1
+	# less then n-1 fruit mean several fruits detected
+	else:
+		fruit = nb_fruit
+	
+	return fruit
+
+def detection_fruit(classe,prediction):
+	"""
+	This function analyse the list of prediction and return a consolidation of the predictions done
+	Args:
+	-----
+	- classe : list of classes
+	- prediction : list of predictions
+	Returns:
+	--------
+	- fruit
+	"""
+	nb_predicted_images = len(prediction)
+	list_indexes = classe[::2]
+	nb_fruit = len(list_indexes)-1 # remove the blank detection
+	# count the number of each predicted fruit, including the number of "no prediction" and "several fruits"
+	list_nb_indexes = [prediction.count(x) for x in range(-1,(nb_fruit+1))]
+	# remove the number of "no prediction" from the list
+	list_nb_fruit = list_nb_indexes[1:nb_fruit+2]
+	# find the most detected prediction
+	fruit = list_nb_fruit.index(max(list_nb_fruit))
+
+	nb_max = list_nb_fruit[fruit]
+	#if the max detected has detected more then 10% of time then this is the detection, otherwise return "no predition"
+	if nb_max > (nb_predicted_images / 10):
+		result = fruit
+	else:
+		result = -1
+	return result
+
+
+if __name__ == "__main__":
+
+	classe = ['Tomato', 'Tomato (group)', 'Apple', 'Apple (group)', 'Banana', 'Banana (group)', 'Mango', 'Mango (group)', 'Blank']
+	index = [-1,-1,-1,-1,-1,-1,1,-1,-1,-1,4,4,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1]
+	proba = []
+	#print(result_fruit(classe,index,proba))
+	#print(detection_fruit(classe,index,len(index)))
+
+	"""
+	socketio = SocketIO(None, async_mode=None, logger=True, engineio_logger=True)
+	camera_thumb = Camera(socketio, video_source = 0,nb_predicted_images = 60)
+
+	camera_thumb.run()
+
+	while True:
+		frame = camera_thumb.get_frame_thumb()
+		jpg_as_np = np.frombuffer(frame, dtype=np.uint8)
+		img = cv2.imdecode(jpg_as_np, flags=1)
+		cv2.imshow("test", img)
+		cv2.waitKey(1)
+	"""

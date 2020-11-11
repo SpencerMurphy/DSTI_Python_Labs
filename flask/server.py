@@ -1,5 +1,7 @@
 from flask import Flask, redirect, url_for, render_template, request, Response
 from camera import Camera
+from predict import YoloPredictionModel
+
 
 from flask_socketio import SocketIO, emit
 from flask import copy_current_request_context
@@ -20,7 +22,7 @@ socketio = SocketIO(app, async_mode=None, logger=True, engineio_logger=True)
 # one for fruit detection and the other for thumb detection
 # nb_predicted_images : number of images used to do the prediction
 camera_thumb = Camera(socketio,video_source = 0,nb_predicted_images = 60)
-camera_fruit = Camera(socketio,video_source = 0,nb_predicted_images = 60)
+camera_fruit = Camera(socketio,video_source = 1,nb_predicted_images = 20)
 
 # initialize this global variable used to store the fruit detection to None
 fruit_prediction = None
@@ -76,6 +78,7 @@ def index():
     global fruit_prediction
     if request.method == "POST":
         return redirect(url_for("fruit_video"))
+
     else:
         fruit_prediction = None
         return render_template("index.html")
@@ -87,7 +90,7 @@ def thumb_video(predict):
     This function treat the behavior of the thumb_video page
     Args:
     -----
-    - None
+    - predict : get the predicted fruit in a string
     Returns:
     --------
     -  GET : return the template thumb_video.html . Display which fruit has been detected 
@@ -103,6 +106,7 @@ def thumb_video(predict):
     # "call" the route /thumb_video_feed in order to get an image
     camera_thumb.reset()
     camera_thumb.run()
+    # send to the html thum_video.html the predicted fruit in a string variable in order to show it on the client web page
     return render_template('thumb_video.html',predict=fruit_prediction)
 
 @app.route("/thumb_video_feed")
@@ -132,6 +136,7 @@ def fruit_video_feed():
     -  a "Response" that can be displayed as an image by the web page. Using the generator to get images from the camera
     """
     return Response(gen_fruit(camera_fruit), mimetype="multipart/x-mixed-replace; boundary=frame")
+
 
 @app.route('/fruit_video/')
 def fruit_video():
@@ -176,10 +181,9 @@ def fruit_manual_choice():
             pass # unknown
     else : #GET
         # get the fruit_detection from the global variable fruit_detection and send it to
-        # the fruit_manual_choice.html page to be printed
+        # the fruit_manual_choice.html page to be displayed
         return render_template('fruit_manual_choice.html', predict = fruit_prediction)
 
-# ticket_print not yet coded
 @app.route('/ticket_printing/')
 def ticket_printing():
     """
@@ -192,24 +196,10 @@ def ticket_printing():
     -  GET : return the template ticket_printing.html .
     """
     # get the fruit_detection from the global variable fruit_detection and send it to
-    # the ticket_printitng.html page to be printed
+    # the ticket_printitng.html page to be displayed
     global fruit_prediction
     return render_template('ticket_printing.html', predict = fruit_prediction)
 
-@socketio.on('connect', namespace='/start')
-def start_connect():
-    """
-    This function is called at initialization by the front end of the socket
-    Args:
-    -----
-    - namespace
-    Returns:
-    --------
-    -  None
-    """
-    print('Client connected')
-
    
 if __name__ == "__main__":
-    Timer_wait = 0
     socketio.run(app)

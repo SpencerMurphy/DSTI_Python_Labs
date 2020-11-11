@@ -21,20 +21,38 @@ $(document).ready(function(){
                 window.location.href = "/";
             }, 2000);
         }
-        else if (msg.number == 10){
-            result_string = '<p> Fruit Detected </p>';
+        else if (msg.number == 9){
+            result_string = '<p> No fruit Detected</p>';
             setTimeout(function(){
-                window.location.href = "/thumb_video/up";
+                window.location.href = "/";
             }, 2000);
         }
-        else if (msg.number == 11) {
-            result_string = '<p> Fruit Detected </p>'
+        else if (msg.number == 10) {
+            result_string = '<p> Tomato Detected </p>'
             setTimeout(function(){
-                window.location.href = "/thumb_video/down";
+                window.location.href = "/thumb_video/tomato";
             }, 2000);
         } 
+        else if (msg.number == 11) {
+            result_string = '<p> Apple detected </p>'
+            setTimeout(function(){
+                window.location.href = "/thumb_video/apple";
+            }, 2000);
+        }
         else if (msg.number == 12) {
-            result_string = '<p> No fruit detected </p>'
+            result_string = '<p> Banana detected </p>'
+            setTimeout(function(){
+                window.location.href = "/thumb_video/banana";
+            }, 2000);
+        }
+        else if (msg.number == 13) {
+            result_string = '<p> Mango detected </p>'
+            setTimeout(function(){
+                window.location.href = "/thumb_video/mango";
+            }, 2000);
+        }
+        else if (msg.number == 14) {
+            result_string = '<p> Several fruits detected </p>'
             setTimeout(function(){
                 window.location.href = "/";
             }, 2000);
