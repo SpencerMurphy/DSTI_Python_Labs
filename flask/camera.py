@@ -14,7 +14,7 @@ from flask_socketio import SocketIO, emit
 from threading import Thread, Event
 
 
-PATH_MODEL_THUMB = "model/weights_thumb_v10112020.h5"
+PATH_MODEL_THUMB = "model/weights_thumb_v1.h5"
 PATH_CLASSES_THUMB = "model/thumb.classes"
 
 
@@ -59,21 +59,6 @@ class Camera:
 		# flag to know if the thread responsible for getting the frames is running
 		self.isrunning = False
 
-	def reset(self):
-		"""
-		This function reset the properites of an Camera instance
-		Args:
-		-----
-		- None
-		Returns:
-		--------
-		-  None
-		"""
-
-		self.frames = []
-		self._predictions = []
-		self.camera.open(self.video_source)
-
 
 	def __del__(self):
 		"""
@@ -98,9 +83,12 @@ class Camera:
 		- None
 		"""
 		global thread
-		# only create a thread the first time this function is called
+		# only create a thread and start the camera the first time this function is called
 		if thread is None:
 			print("starting thread")
+			self.frames = []
+			self._predictions = []
+			self.camera.open(self.video_source)
 			# build and start a thread running _capture_loop
 			thread = threading.Thread(target=self._capture_loop,daemon=True)
 			self.isrunning = True

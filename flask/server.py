@@ -22,7 +22,7 @@ socketio = SocketIO(app, async_mode=None, logger=True, engineio_logger=True)
 # one for fruit detection and the other for thumb detection
 # nb_predicted_images : number of images used to do the prediction
 camera_thumb = Camera(socketio,video_source = 0,nb_predicted_images = 60)
-camera_fruit = Camera(socketio,video_source = 1,nb_predicted_images = 20)
+camera_fruit = Camera(socketio,video_source = 0,nb_predicted_images = 20)
 
 # initialize this global variable used to store the fruit detection to None
 fruit_prediction = None
@@ -104,7 +104,6 @@ def thumb_video(predict):
     # when the page is rendered, the camera is started to realize the prediction
     # the code <img src="{{ url_for('thumb_video_feed') }}"> in the thumb_video.html file
     # "call" the route /thumb_video_feed in order to get an image
-    camera_thumb.reset()
     camera_thumb.run()
     # send to the html thum_video.html the predicted fruit in a string variable in order to show it on the client web page
     return render_template('thumb_video.html',predict=fruit_prediction)
@@ -153,7 +152,6 @@ def fruit_video():
     # when the page is rendered, the camera is started to realize the prediction
     # the code <img src="{{ url_for('fruit_video_feed') }}"> in the fruit_video.html file
     # "call" the route /thumb_video_feed in order to get an image
-    camera_fruit.reset()
     camera_fruit.run()
     return render_template('fruit_video.html')
 
